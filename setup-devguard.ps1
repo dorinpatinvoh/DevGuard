@@ -30,15 +30,15 @@ try {
         $value = & git config --get $key
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value)) { throw "Configurez git config $key avant de relancer." }
     }
-    & docker info *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $dockerReady = $false
+    try { & docker info *> $null; $dockerReady = ($LASTEXITCODE -eq 0) } catch { $dockerReady = $false }
+    if (-not $dockerReady) {
         $desktop = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
         if (Test-Path $desktop) { Start-Process $desktop | Out-Null }
         $deadline = (Get-Date).AddSeconds(120)
         do {
             Start-Sleep -Seconds 3
-            & docker info *> $null
-            $ready = $LASTEXITCODE -eq 0
+            try { & docker info *> $null; $ready = ($LASTEXITCODE -eq 0) } catch { $ready = $false }
         } until ($ready -or (Get-Date) -gt $deadline)
         if (-not $ready) { throw 'Docker Desktop ne repond pas. Activez les conteneurs Linux puis relancez.' }
     }
@@ -75,6 +75,13 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/setup-devguard.ps1", [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) { throw ($parseErrors | Out-String) }
       - run: mvn --batch-mode --no-transfer-progress verify
 '@
     $files['.gitignore'] = @'
@@ -286,6 +293,9 @@ class UserPersistenceTest {
 
     $encoding = New-Object System.Text.UTF8Encoding($false)
     $backupRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('DevGuard-backup-' + [guid]::NewGuid().ToString('N'))
+    foreach ($relative in $files.Keys) {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent (Join-Path $ProjectPath $relative)) | Out-Null
+    }
     foreach ($relative in $files.Keys) {
         $destination = Join-Path $ProjectPath $relative
         $parent = Split-Path -Parent $destination
