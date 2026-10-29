@@ -1,0 +1,26 @@
+name: Java 21 and PostgreSQL 16
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: devguard_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: SecretPassword2026
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d devguard_db"
+          --health-interval 5s --health-timeout 5s --health-retries 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn --batch-mode --no-transfer-progress verify
